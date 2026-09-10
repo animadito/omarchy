@@ -101,6 +101,29 @@ const orphaned = model.layoutBriefs([
 
 assertEqual(orphaned['Greek'], undefined, 'a brief stops at the end of its block')
 
+// The same table read the other way: a position in the layout list carries a
+// layout and a variant, and the pair names the brief that position reads.
+const table = model.layoutBriefsWithTable(listing)
+assertEqual(table.briefs['English (US)'], 'en', 'the table reads a layout brief')
+assertEqual(table.layoutToBrief['us,'], 'en', 'a layout without a variant is keyed by its own name')
+assertEqual(table.layoutToBrief['us,intl'], 'en', 'a layout with a variant is keyed by both')
+assertEqual(table.layoutToBrief['latam,'], 'es', 'a country variant keeps its own key')
+assertEqual(table.layoutToBrief['mm,zawgyi'], 'my-zwg', 'a scripted brief keeps its script')
+assertEqual(Object.keys(table.layoutToBrief).length, 6, 'the reverse table holds nothing but the layouts')
+assertEqual(table.layoutToBrief[''], undefined, 'a block without a layout keys nothing')
+
+// A seat holding the same layout twice, which is what a second US layer for
+// accented characters looks like: both positions read the same until one is
+// numbered.
+const duplicated = model.labelsForLayouts('us,us', ',intl', table.layoutToBrief)
+assertEqual(duplicated[0], 'EN', 'the first of two identical layouts reads as itself')
+assertEqual(duplicated[1], 'EN2', 'the second of two identical layouts is numbered')
+assertEqual(model.labelsForLayouts('us,us,us', ',,', table.layoutToBrief)[2], 'EN3', 'a third identical layout is numbered too')
+assertEqual(model.labelsForLayouts('us,br', ',', table.layoutToBrief)[1], 'PT', 'layouts that differ need no number')
+assertEqual(model.labelsForLayouts('us,us', ' ,intl', table.layoutToBrief)[1], 'EN2', 'a padded variant is trimmed before the lookup')
+assertEqual(model.labelsForLayouts('us,us', ',intl', {})[0], 'US', 'a layout missing from the table falls back to its own name')
+assertEqual(model.labelsForLayouts('', '', {})[0], '', 'a seat that has not been read yet has no label')
+
 assertEqual(model.shortLabel('Elvish (Tengwar)', briefs), 'ELV', 'an unlisted layout falls back to its description')
 assertEqual(model.shortLabel('English (US)', {}), 'ENG', 'the label survives an empty table')
 assertEqual(model.shortLabel('constructor', {}), 'CON', 'a description naming a built-in still falls back')

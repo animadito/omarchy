@@ -12,25 +12,54 @@
 // The models and option groups it also prints carry no brief of their own, and
 // a brief never carries past the block it was printed in, so neither reaches
 // the table.
-function layoutBriefs(text) {
+//
+// The table is read once into both directions: the description hyprctl reports
+// as the active keymap, and the layout and variant a position in the layout
+// list carries. The second is what tells two positions holding the same
+// layout apart.
+function layoutBriefsWithTable(text) {
   var briefs = {}
+  var layoutToBrief = {}
   var brief = ""
+  var layout = ""
+  var variant = ""
 
   String(text || "").split("\n").forEach(function (line) {
-    if (/^\s*- /.test(line)) brief = ""
+    if (/^\s*- /.test(line)) {
+      brief = ""
+      layout = ""
+      variant = ""
+    }
 
-    var field = line.match(/^  (brief|description): (.*)$/)
+    // The layout names its own item, so it carries the dash, while the
+    // variant, the brief and the description are indented under it.
+    var named = line.match(/^(?:- |  )layout: (.*)$/)
+    if (named) {
+      layout = named[1].replace(/^'|'$/g, "")
+      return
+    }
+
+    var field = line.match(/^  (variant|brief|description): (.*)$/)
     if (!field) return
 
-    if (field[1] === "brief") {
+    if (field[1] === "variant") {
+      variant = field[2].replace(/^'|'$/g, "")
+    } else if (field[1] === "brief") {
       brief = field[2].replace(/^'|'$/g, "")
     } else if (brief) {
       briefs[field[2]] = brief
+      // The layout and variant of the block make the key a position in the
+      // layout list carries: "us" reads "us," and "us,intl" reads "us,intl".
+      layoutToBrief[layout + "," + variant] = brief
       brief = ""
     }
   })
 
-  return briefs
+  return { briefs: briefs, layoutToBrief: layoutToBrief }
+}
+
+function layoutBriefs(text) {
+  return layoutBriefsWithTable(text).briefs
 }
 
 // The brief is a short language code rather than a country one, which keeps the
@@ -132,11 +161,58 @@ function layoutIndex(keyboard) {
   return (keyboard && keyboard.active_layout_index) || 0
 }
 
+// Given a layout string like "us,us" and variant ",intl" (same length, comma
+// separated to match), return an array of labels like ["EN", "EN2"].
+// When two layouts produce the same label, the second gets a digit suffix.
+function labelsForLayouts(layoutStr, variantStr, layoutToBrief) {
+  var layouts = String(layoutStr || "").split(",")
+  var variants = variantStr ? String(variantStr).split(",") : []
+  var rawLabels = []
+
+  for (var i = 0; i < layouts.length; i++) {
+    // Trim: hyprctl pads the variant with a leading space (" ,intl") while
+    // xkbcli returns it without ("us,intl"), so normalise before the lookup.
+    var lv = (layouts[i] || "").trim() + "," + ((variants[i] || "").trim())
+    var brief = (layoutToBrief || {})[lv]
+    // The brief reads like every other label: the language code, without the
+    // script a few carry on top of it, uppercase and no longer than three
+    // characters. A layout the table does not know falls back to its own name.
+    rawLabels.push(brief
+      ? brief.split("-")[0].substring(0, 3).toUpperCase()
+      : (layouts[i] || "").substring(0, 3).toUpperCase())
+  }
+
+  // Count occurrences to find collisions
+  var counts = {}
+  for (var j = 0; j < rawLabels.length; j++) {
+    var l = rawLabels[j]
+    counts[l] = (counts[l] || 0) + 1
+  }
+
+  // Add digit suffixes for collisions: first gets plain, subsequent get 2, 3...
+  var seen = {}
+  var adjusted = []
+  for (var k = 0; k < rawLabels.length; k++) {
+    var label = rawLabels[k]
+    if (counts[label] > 1) {
+      seen[label] = (seen[label] || 0) + 1
+      adjusted.push(seen[label] > 1 ? label + seen[label] : label)
+    } else {
+      adjusted.push(label)
+    }
+  }
+
+  return adjusted
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     eventKeyboardName: eventKeyboardName,
     isTypedKeyboard: isTypedKeyboard,
+    labelsForLayouts: labelsForLayouts,
     layoutBriefs: layoutBriefs,
+    layoutBriefsWithTable: layoutBriefsWithTable,
+    layoutIndex: layoutIndex,
     selectKeyboard: selectKeyboard,
     shortLabel: shortLabel,
     inputLabel: inputLabel,

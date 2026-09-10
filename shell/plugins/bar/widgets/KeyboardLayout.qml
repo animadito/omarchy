@@ -33,6 +33,12 @@ BarWidget {
   // Short language code per layout description ("English (US)": "en"), read from
   // xkb's own table rather than maintained by hand.
   property var layoutBriefs: ({})
+  // Reverse-lookup table: "layout,variant" -> brief code, built at the same
+  // time as layoutBriefs so we can label each position in the layout list.
+  property var layoutToBrief: ({})
+  // Raw layout and variant strings from hyprctl, for computing per-index labels.
+  property string keyboardLayout: ""
+  property string keyboardVariant: ""
   // The table is only needed once the widget shows a label, which a seat with
   // one layout and one input method never does, so it's read on first need.
   property bool layoutsRead: false
@@ -45,7 +51,15 @@ BarWidget {
     briefsRequested = true
     briefsProc.running = true
   }
-  readonly property string layoutLabel: KeyboardLayoutModel.shortLabel(layoutFull, layoutBriefs)
+  // Compute label for the active index, with duplicate suffixes: EN, ES, EN2...
+  // A seat holding the same layout twice reads the same without them, so the
+  // second position is numbered. The description is the fallback for a seat
+  // whose table has not been read yet.
+  readonly property string layoutLabel: {
+    var all = KeyboardLayoutModel.labelsForLayouts(
+      root.keyboardLayout, root.keyboardVariant, root.layoutToBrief)
+    return all[root.layoutIndex] || KeyboardLayoutModel.shortLabel(root.layoutFull, root.layoutBriefs)
+  }
   readonly property var inputState: InputMethodState.state
   readonly property bool multipleInputs: (inputState.methods || []).length > 1
   readonly property string inputLabel: KeyboardLayoutModel.inputLabel(inputState, layoutLabel)
@@ -183,6 +197,8 @@ BarWidget {
 
         root.keyboardUnresolved = false
         root.keyboardName = String(kb.name || "")
+        root.keyboardLayout = String(kb.layout || "")
+        root.keyboardVariant = String(kb.variant || "")
         root.multipleLayouts = kb.layout === undefined || String(kb.layout).indexOf(",") !== -1
         root.layoutsRead = true
         root.layoutIndex = kb.active_layout_index || 0
@@ -208,7 +224,11 @@ BarWidget {
     command: ["xkbcli", "list", "--load-exotic"]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.layoutBriefs = KeyboardLayoutModel.layoutBriefs(text)
+      onStreamFinished: {
+        var result = KeyboardLayoutModel.layoutBriefsWithTable(text)
+        root.layoutBriefs = result.briefs
+        root.layoutToBrief = result.layoutToBrief
+      }
     }
   }
 

@@ -99,3 +99,16 @@ hl.config({
   },
 })
 ```
+
+That swap reaches every keyboard you plug in. When only one of them has its keys in the order you want, give that keyboard its own options with `hl.device()` and leave the global ones alone:
+
+```lua
+hl.device({
+  name = "my-keyboard",
+  kb_options = "omarchy:shift_caps_compose,altwin:swap_lalt_lwin",
+})
+```
+
+A keyboard's own `kb_options` replaces the global ones for that keyboard, so copy in everything you want it to keep. `hyprctl devices` prints the name to use.
+
+`altwin:swap_alt_win` swaps Alt and Super on both sides. `altwin:swap_lalt_lwin` swaps the left pair only, which is what a PC keyboard used next to a Mac one usually needs: the Mac puts Option and Cmd where the PC puts Alt and the Windows key.
